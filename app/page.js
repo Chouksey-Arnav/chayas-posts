@@ -131,7 +131,7 @@ export default async function HomePage() {
             className="font-display font-light leading-none mb-4 animate-fade-slide-up delay-100"
             style={{ fontSize: 'clamp(3rem, 8vw, 5.5rem)', color: '#f0d080' }}
           >
-            Chaya's <em className="italic">Posts</em>
+            Chhaya's <em className="italic">Posts</em>
           </h1>
 
           <div className="flex items-center justify-center gap-4 mb-6 animate-fade-slide-up delay-200">
@@ -144,7 +144,7 @@ export default async function HomePage() {
             className="font-body text-lg md:text-xl leading-relaxed italic animate-fade-slide-up delay-300"
             style={{ color: 'rgba(240,208,128,0.8)' }}
           >
-            Poems, reflections, and voice recordings — straight from the heart of Chaya Chouksey.
+            Poems, reflections, and voice recordings — straight from the heart of Chhaya Chouksey.
           </p>
 
           <div className="mt-10 flex items-center justify-center gap-4 animate-fade-slide-up delay-400">
@@ -152,7 +152,7 @@ export default async function HomePage() {
               Read the Posts
             </a>
             <Link href="/about" className="btn-secondary" style={{ color: 'rgba(240,208,128,0.8)', borderColor: 'rgba(200,155,58,0.4)' }}>
-              About Chaya
+              About Chhaya
             </Link>
           </div>
         </div>
@@ -179,7 +179,7 @@ export default async function HomePage() {
               The page is yet unwritten…
             </p>
             <p className="font-body text-base" style={{ color: 'var(--ink-soft)', opacity: 0.7 }}>
-              Chaya's first post will appear here shortly.
+              Chhaya's first post will appear here shortly.
             </p>
           </div>
         ) : (
