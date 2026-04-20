@@ -1,72 +1,98 @@
-import { NextResponse } from 'next/server';
-import { dbAdmin, isAdmin } from '@/lib/db';
+import { NextResponse } from 'next/server'
+import { getAdminClient, getAuthFromRequest } from '@/lib/db'
 
-const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+// Max audio file size: 50 MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024
 
-export async function POST(req) {
-  // ── Auth check ────────────────────────────────────────────────────
-  if (!await isAdmin()) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+// Allowed MIME types for audio
+const ALLOWED_TYPES = [
+  'audio/webm',
+  'audio/webm;codecs=opus',
+  'audio/ogg',
+  'audio/ogg;codecs=opus',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/x-wav',
+]
+
+// ── POST /api/upload  →  Admin — upload audio to Supabase Storage ────
+export async function POST(request) {
+  // Verify admin auth
+  const payload = await getAuthFromRequest(request)
+  if (!payload) {
+    return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
 
   try {
-    const formData = await req.formData();
-    const file = formData.get('audio');
+    const formData = await request.formData()
+    const file = formData.get('audio')
 
     if (!file || typeof file === 'string') {
-      return NextResponse.json({ error: 'No audio file provided.' }, { status: 400 });
+      return NextResponse.json({ error: 'No audio file provided.' }, { status: 400 })
     }
 
-    // ── Size guard ────────────────────────────────────────────────────
-    if (file.size > MAX_BYTES) {
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: 'File too large. Maximum size is 25 MB.' },
+        { error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024} MB.` },
         { status: 413 }
-      );
+      )
     }
 
-    // ── Type guard (accept any audio/* MIME type) ─────────────────────
-    if (!file.type.startsWith('audio/')) {
+    // Check MIME type (be lenient — browsers report slightly different types)
+    const mimeType = file.type || 'audio/webm'
+    const isAllowed = ALLOWED_TYPES.some((t) => mimeType.startsWith(t.split(';')[0]))
+    if (!isAllowed) {
       return NextResponse.json(
-        { error: `Invalid file type "${file.type}". Only audio files are accepted.` },
+        { error: `Unsupported file type: ${mimeType}. Please record using your browser.` },
         { status: 415 }
-      );
+      )
     }
 
-    // ── Build a unique path ───────────────────────────────────────────
-    const ext = (file.name?.split('.').pop() || 'webm').toLowerCase();
-    const key = `audio/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    // Generate a unique filename
+    const timestamp = Date.now()
+    const randomSuffix = Math.random().toString(36).slice(2, 8)
+    const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : 'webm'
+    const fileName = `recording-${timestamp}-${randomSuffix}.${ext}`
 
-    // ── Upload to Supabase Storage ────────────────────────────────────
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    // Convert the file to a Buffer for upload
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
 
-    const { data, error } = await dbAdmin.storage
-      .from('audio')
-      .upload(key, bytes, {
-        contentType: file.type || 'audio/webm',
+    // Upload to Supabase Storage bucket 'recordings'
+    const adminClient = getAdminClient()
+    const { data, error } = await adminClient.storage
+      .from('recordings')
+      .upload(fileName, buffer, {
+        contentType: mimeType,
         upsert: false,
-      });
+        cacheControl: '3600',
+      })
 
     if (error) {
-      console.error('Supabase storage upload error:', error);
+      console.error('Supabase storage upload error:', error)
       return NextResponse.json(
         { error: 'Failed to upload audio. Please try again.' },
         { status: 500 }
-      );
+      )
     }
 
-    // ── Return the public URL ─────────────────────────────────────────
-    const { data: urlData } = dbAdmin.storage
-      .from('audio')
-      .getPublicUrl(data.path);
+    // Build the public URL
+    const { data: urlData } = adminClient.storage
+      .from('recordings')
+      .getPublicUrl(data.path)
 
-    return NextResponse.json({ url: urlData.publicUrl });
+    if (!urlData?.publicUrl) {
+      return NextResponse.json(
+        { error: 'File uploaded but could not retrieve public URL.' },
+        { status: 500 }
+      )
+    }
 
+    return NextResponse.json({ url: urlData.publicUrl }, { status: 201 })
   } catch (err) {
-    console.error('Upload route error:', err);
-    return NextResponse.json(
-      { error: 'An unexpected error occurred during upload.' },
-      { status: 500 }
-    );
+    console.error('POST /api/upload error:', err)
+    return NextResponse.json({ error: 'An unexpected error occurred.' }, { status: 500 })
   }
 }
