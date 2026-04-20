@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { supabase, getAdminClient, getAuthFromRequest } from '@/lib/db'
 
 // ── GET /api/posts  →  Public — fetch all posts ──────────────────────
@@ -39,7 +40,7 @@ export async function POST(request) {
     const body = await request.json()
     const { title, content, category, audio_url } = body
 
-    // Validate
+    // Validate inputs
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
       return NextResponse.json({ error: 'Title is required.' }, { status: 400 })
     }
@@ -70,6 +71,11 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Failed to create post.' }, { status: 500 })
     }
 
+    // ✅ BUG FIX: Revalidate homepage and all public pages so new post
+    // appears instantly without waiting for Vercel cache to expire
+    revalidatePath('/', 'page')
+    revalidatePath('/', 'layout')
+
     return NextResponse.json({ post: data }, { status: 201 })
   } catch (err) {
     console.error('POST /api/posts error:', err)
@@ -95,7 +101,7 @@ export async function DELETE(request) {
 
     const adminClient = getAdminClient()
 
-    // Fetch the post first to get the audio_url for storage cleanup
+    // Fetch the post first so we can clean up storage
     const { data: post } = await adminClient
       .from('posts')
       .select('audio_url')
@@ -113,10 +119,9 @@ export async function DELETE(request) {
       return NextResponse.json({ error: 'Failed to delete post.' }, { status: 500 })
     }
 
-    // Also remove the audio file from storage if it exists
+    // Clean up audio file from storage if one existed
     if (post?.audio_url) {
       try {
-        // Extract the file path from the full URL
         const url = new URL(post.audio_url)
         const pathParts = url.pathname.split('/object/public/recordings/')
         if (pathParts.length === 2) {
@@ -125,10 +130,14 @@ export async function DELETE(request) {
             .remove([pathParts[1]])
         }
       } catch {
-        // Non-fatal: post is already deleted, just log the storage cleanup failure
-        console.warn('Could not clean up audio file from storage.')
+        // Non-fatal: post is deleted, just couldn't clean up audio file
+        console.warn('Could not delete audio file from storage.')
       }
     }
+
+    // ✅ BUG FIX: Revalidate homepage so deleted post disappears instantly
+    revalidatePath('/', 'page')
+    revalidatePath('/', 'layout')
 
     return NextResponse.json({ success: true })
   } catch (err) {
