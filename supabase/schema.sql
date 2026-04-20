@@ -1,15 +1,14 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- Chhaya's Posts — Supabase Schema
--- Run this entire file in the Supabase SQL Editor (one click → Run).
+-- Chhaya's Posts — Supabase Schema  (run once in SQL Editor → New Query → Run)
 -- ═══════════════════════════════════════════════════════════════════════════
 
 
 -- ─── 1. Posts table ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS posts (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title      TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
+  id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  title      TEXT        NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
   content    TEXT,
-  category   TEXT NOT NULL DEFAULT 'note'
+  category   TEXT        NOT NULL DEFAULT 'note'
                CHECK (category IN ('poem', 'reflection', 'story', 'note')),
   audio_url  TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -21,7 +20,7 @@ CREATE TABLE IF NOT EXISTS posts (
   )
 );
 
--- Index for fast ordering on the homepage feed
+-- Fast ordering for the homepage feed
 CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts (created_at DESC);
 
 
@@ -40,61 +39,65 @@ CREATE TRIGGER posts_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 
--- ─── 3. Row-Level Security ─────────────────────────────────────────────────
--- Enable RLS so the anon key can only READ posts.
--- The service_role key (used by the admin API routes) bypasses RLS.
+-- ─── 3. Row-Level Security on posts ────────────────────────────────────────
 ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
 
--- Anyone can read all posts (the public feed)
+-- Public can read all posts (the homepage feed)
 DROP POLICY IF EXISTS "Allow public read" ON posts;
 CREATE POLICY "Allow public read"
   ON posts FOR SELECT
   TO anon, authenticated
   USING (true);
 
--- Only the service_role (our server-side admin API) can insert/update/delete.
--- service_role bypasses RLS automatically — no extra policy needed.
+-- service_role (our admin API) bypasses RLS automatically for INSERT/UPDATE/DELETE
 
 
 -- ─── 4. Storage bucket for audio recordings ────────────────────────────────
--- Create the bucket if it doesn't already exist.
+--
+-- ✅ CRITICAL: We do NOT set allowed_mime_types here.
+--
+-- Why? Because browsers append codec info to MIME types:
+--   'audio/webm'           → standard
+--   'audio/webm;codecs=opus' → what Chrome/Edge actually sends
+--
+-- Supabase does EXACT string matching on allowed_mime_types.
+-- If we set ['audio/webm'] it REJECTS 'audio/webm;codecs=opus'.
+-- Leaving allowed_mime_types as NULL means ALL audio types are accepted.
+-- Our API route (upload/route.js) already validates the MIME type safely.
+--
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'recordings',
   'recordings',
-  true,                           -- Public bucket so audio URLs work without signed URLs
-  52428800,                       -- 50 MB per file
-  ARRAY[
-    'audio/webm',
-    'audio/ogg',
-    'audio/mp4',
-    'audio/mpeg',
-    'audio/wav',
-    'audio/x-wav'
-  ]
+  true,       -- Public: audio files stream without signed URLs
+  52428800,   -- 50 MB per file
+  NULL        -- ✅ NULL = accept all types (our API validates them)
 )
 ON CONFLICT (id) DO UPDATE SET
   public             = EXCLUDED.public,
   file_size_limit    = EXCLUDED.file_size_limit,
-  allowed_mime_types = EXCLUDED.allowed_mime_types;
+  allowed_mime_types = NULL;  -- ✅ Remove any old restrictions
 
 
--- Storage RLS: allow public to READ (stream audio); only service_role can write.
-DROP POLICY IF EXISTS "Public read recordings" ON storage.objects;
-CREATE POLICY "Public read recordings"
+-- ─── 5. Storage RLS policies ───────────────────────────────────────────────
+
+-- Anyone can stream/download recordings (needed for the AudioPlayer)
+DROP POLICY IF EXISTS "Public can read recordings" ON storage.objects;
+CREATE POLICY "Public can read recordings"
   ON storage.objects FOR SELECT
   TO public
   USING (bucket_id = 'recordings');
 
--- service_role bypasses storage RLS for INSERT/UPDATE/DELETE automatically.
+-- service_role bypasses RLS for INSERT/UPDATE/DELETE automatically.
+-- No extra INSERT policy needed — our admin client uses the service_role key.
 
 
--- ─── 5. Verify setup ───────────────────────────────────────────────────────
+-- ─── 6. Verify ─────────────────────────────────────────────────────────────
 DO $$
 BEGIN
   RAISE NOTICE '✓ posts table ready';
-  RAISE NOTICE '✓ RLS policies applied';
-  RAISE NOTICE '✓ recordings storage bucket ready';
+  RAISE NOTICE '✓ Row-Level Security applied';
+  RAISE NOTICE '✓ recordings storage bucket ready (no MIME type restriction)';
   RAISE NOTICE '';
-  RAISE NOTICE 'Setup complete! Your database is ready for Chhaya''s Posts.';
+  RAISE NOTICE 'Setup complete! Database is ready for Chhaya''s Posts.';
 END $$;
