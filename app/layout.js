@@ -18,13 +18,13 @@ const ebGaramond = EB_Garamond({
 })
 
 export const metadata = {
-  title: "Chaya's Posts — Words from the Heart",
+  title: "Chhaya's Posts — Words from the Heart",
   description:
-    "A personal literary space where Chaya Chouksey shares her poems, reflections, and voice recordings.",
-  keywords: ['poetry', 'literature', 'Chaya Chouksey', 'Hindi poetry', 'reflections'],
+    "A personal literary space where Chhaya Chouksey shares her poems, reflections, and voice recordings.",
+  keywords: ['poetry', 'literature', 'Chhaya Chouksey', 'Hindi poetry', 'reflections'],
   openGraph: {
-    title: "Chaya's Posts",
-    description: 'Words from the heart of Chaya Chouksey — poet, storyteller, voice.',
+    title: "Chhaya's Posts",
+    description: 'Words from the heart of Chhaya Chouksey — poet, storyteller, voice.',
     type: 'website',
   },
 }
