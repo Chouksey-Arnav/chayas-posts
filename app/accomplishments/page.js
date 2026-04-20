@@ -1,8 +1,8 @@
 import { Navbar, Footer } from '@/components/Nav'
 
 export const metadata = {
-  title: "Accomplishments — Chaya's Posts",
-  description: "A timeline of Chaya Chouksey's literary journey, milestones, and life's work.",
+  title: "Accomplishments — Chhaya's Posts",
+  description: "A timeline of Chhaya Chouksey's literary journey, milestones, and life's work.",
 }
 
 const timeline = [
@@ -10,7 +10,7 @@ const timeline = [
     year: '1955',
     era: 'Early Years',
     title: 'The First Poem',
-    desc: 'Chaya discovers her love for language as a young girl, reciting dohas (couplets) from memory and composing her first original verses — a natural gift that would define her life.',
+    desc: 'Chhaya discovers her love for language as a young girl, reciting dohas (couplets) from memory and composing her first original verses — a natural gift that would define her life.',
     icon: '✨',
   },
   {
@@ -38,7 +38,7 @@ const timeline = [
     year: '1990s',
     era: 'Community Builder',
     title: 'Literary Mentorship Begins',
-    desc: 'Chaya dedicates herself to mentoring younger writers within her family and community, fostering a love of Hindi literature and oral tradition in the next generation.',
+    desc: 'Chhaya dedicates herself to mentoring younger writers within her family and community, fostering a love of Hindi literature and oral tradition in the next generation.',
     icon: '🌱',
   },
   {
@@ -65,8 +65,8 @@ const timeline = [
   {
     year: '2024',
     era: 'Digital Chapter',
-    title: "Chaya's Posts Launches",
-    desc: "Chaya's words find a new home online — this very website — so that her poems, reflections, and voice recordings can reach hearts far beyond her living room.",
+    title: "Chhaya's Posts Launches",
+    desc: "Chhaya's words find a new home online — this very website — so that her poems, reflections, and voice recordings can reach hearts far beyond her living room.",
     icon: '💻',
   },
 ]
@@ -81,7 +81,7 @@ const statPillars = [
 const literaryValues = [
   {
     title: 'Classical Roots',
-    desc: 'Grounded in the doha tradition of Kabir and Rahim, Chaya honours the discipline and beauty of classical Hindi verse forms.',
+    desc: 'Grounded in the doha tradition of Kabir and Rahim, Chhaya honours the discipline and beauty of classical Hindi verse forms.',
   },
   {
     title: 'Modern Expression',
@@ -289,7 +289,7 @@ export default function AccomplishmentsPage() {
           </p>
           <div className="flex items-center justify-center gap-4 mb-2">
             <div className="h-px w-12" style={{ background: 'rgba(200,155,58,0.4)' }} />
-            <span className="font-display text-base" style={{ color: 'rgba(200,155,58,0.7)' }}>Chaya Chouksey</span>
+            <span className="font-display text-base" style={{ color: 'rgba(200,155,58,0.7)' }}>Chhaya Chouksey</span>
             <div className="h-px w-12" style={{ background: 'rgba(200,155,58,0.4)' }} />
           </div>
         </section>
@@ -300,7 +300,7 @@ export default function AccomplishmentsPage() {
             Read Her Posts →
           </a>
           <a href="/about" className="btn-secondary">
-            About Chaya
+            About Chhaya
           </a>
         </div>
       </main>
