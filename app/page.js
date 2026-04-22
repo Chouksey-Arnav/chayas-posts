@@ -1,12 +1,11 @@
 import Link from 'next/link'
-import { supabase } from '@/lib/db'
-import { Navbar, Footer } from '@/components/Nav'
+import { db } from '@/lib/db'
 import { AudioPlayer } from '@/components/Audio'
 
 // Fetch posts server-side — renders instantly with no loading flash
 async function getPosts() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('posts')
       .select('*')
       .order('created_at', { ascending: false })
@@ -87,12 +86,12 @@ function PostCard({ post }) {
         </div>
       )}
 
-      {/* Audio player */}
+      {/* Audio player — prop is "src", not "url" */}
       {post.audio_url && (
-        <AudioPlayer url={post.audio_url} title={post.title} />
+        <AudioPlayer src={post.audio_url} title={post.title} />
       )}
 
-      {/* Read more link if text was clipped */}
+      {/* Read more hint if text was clipped */}
       {post.content && post.content.length > 400 && (
         <p className="mt-4 font-display italic text-sm" style={{ color: 'var(--gold-primary)' }}>
           — continued above
@@ -107,8 +106,6 @@ export default async function HomePage() {
 
   return (
     <>
-      <Navbar />
-
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section
         className="relative overflow-hidden py-28 md:py-40 text-center"
@@ -192,8 +189,6 @@ export default async function HomePage() {
           </div>
         )}
       </main>
-
-      <Footer />
     </>
   )
 }
