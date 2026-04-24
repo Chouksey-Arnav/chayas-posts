@@ -5,53 +5,45 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AudioRecorder } from '@/components/Audio'
 
-/* ─── Speech-to-Text hook (Web Speech API) ─────────────────────────── */
+/* ─── Speech-to-Text hook ───────────────────────────────────────────── */
 function useSpeechToText({ onResult, onError, lang }) {
   const recogRef = useRef(null)
-  const [listening,  setListening]  = useState(false)
-  const [supported,  setSupported]  = useState(false)
+  const [listening, setListening] = useState(false)
+  const [supported, setSupported] = useState(false)
 
   useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    setSupported(!!SR)
+    setSupported(!!(window.SpeechRecognition || window.webkitSpeechRecognition))
   }, [])
 
   const start = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) {
-      onError?.('Speech recognition is not supported in this browser. Please use Chrome or Edge.')
-      return
-    }
+    if (!SR) { onError?.('Use Chrome or Edge for dictation.'); return }
 
     const recog = new SR()
-    recog.lang            = lang        // ✅ BUG FIX: use dynamic lang prop
+    recog.lang            = lang
     recog.interimResults  = true
     recog.continuous      = true
     recog.maxAlternatives = 1
 
     recog.onresult = (e) => {
-      let interim = ''
-      let final   = ''
+      let interim = '', final = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript
-        if (e.results[i].isFinal) final   += t
-        else                       interim += t
+        if (e.results[i].isFinal) final += t
+        else interim += t
       }
       onResult?.({ final, interim })
     }
-
     recog.onerror = (e) => {
       const msgs = {
-        'not-allowed': 'Microphone permission denied. Please allow microphone access.',
-        'no-speech':   'No speech detected. Please try speaking a bit louder.',
-        'network':     'Network error during recognition. Please check your connection.',
+        'not-allowed': 'Microphone permission denied.',
+        'no-speech':   'No speech detected — please speak louder.',
+        'network':     'Network error during recognition.',
         'aborted':     null,
       }
-      const msg = msgs[e.error]
-      if (msg) onError?.(msg)
+      if (msgs[e.error]) onError?.(msgs[e.error])
       setListening(false)
     }
-
     recog.onend = () => setListening(false)
 
     recogRef.current = recog
@@ -67,125 +59,125 @@ function useSpeechToText({ onResult, onError, lang }) {
   return { listening, supported, start, stop }
 }
 
-/* ─── Dashboard Page ────────────────────────────────────────────────── */
+/* ─── Dashboard ─────────────────────────────────────────────────────── */
 export default function DashboardPage() {
   const router = useRouter()
 
-  // Form state
-  const [title,    setTitle]    = useState('')
-  const [content,  setContent]  = useState('')
-  const [category, setCategory] = useState('poem')
+  // Form
+  const [title,     setTitle]     = useState('')
+  const [content,   setContent]   = useState('')
+  const [category,  setCategory]  = useState('poem')
   const [audioBlob, setAudioBlob] = useState(null)
 
-  // UI state
-  const [publishing,   setPublishing]   = useState(false)
-  const [success,      setSuccess]      = useState(false)
-  const [error,        setError]        = useState(null)
+  // Publish state — split so UI shows exactly which step is happening
+  const [uploadProgress, setUploadProgress] = useState(null) // null | 'uploading' | 'done'
+  const [publishing,     setPublishing]     = useState(false)
+  const [success,        setSuccess]        = useState(false)
+  const [error,          setError]          = useState(null)
+
+  // Posts list
   const [posts,        setPosts]        = useState([])
   const [loadingPosts, setLoadingPosts] = useState(true)
+  const [deletingId,   setDeletingId]   = useState(null)
 
-  // ✅ BUG FIX: language toggle (Hindi / English)
-  const [dictLang, setDictLang] = useState('hi-IN')
-
-  // Speech-to-text
-  const [speechError,  setSpeechError]  = useState(null)
-  const [interimText,  setInterimText]  = useState('')
+  // Dictation
+  const [dictLang,    setDictLang]    = useState('hi-IN')
+  const [speechError, setSpeechError] = useState(null)
+  const [interimText, setInterimText] = useState('')
   const textareaRef = useRef(null)
   const cursorRef   = useRef(0)
 
-  // ── Load existing posts ──────────────────────────────────────────────
+  // ── Load posts ───────────────────────────────────────────────────────
   const fetchPosts = useCallback(async () => {
     try {
       const res  = await fetch('/api/posts')
       const data = await res.json()
       setPosts(data.posts || [])
-    } catch {
-      setPosts([])
-    } finally {
-      setLoadingPosts(false)
-    }
+    } catch { setPosts([]) }
+    finally  { setLoadingPosts(false) }
   }, [])
-
   useEffect(() => { fetchPosts() }, [fetchPosts])
 
-  // ── Speech-to-text handlers ──────────────────────────────────────────
+  // ── Speech handlers ──────────────────────────────────────────────────
   const handleSpeechResult = useCallback(({ final, interim }) => {
     setInterimText(interim)
     if (final) {
-      setContent((prev) => {
-        const ta    = textareaRef.current
-        const pos   = ta ? ta.selectionStart : prev.length
-        const before = prev.slice(0, pos)
-        const after  = prev.slice(pos)
-        const newText = before + final + ' ' + after
+      setContent(prev => {
+        const pos    = textareaRef.current?.selectionStart ?? prev.length
+        const result = prev.slice(0, pos) + final + ' ' + prev.slice(pos)
         cursorRef.current = pos + final.length + 1
-        return newText
+        return result
       })
       setInterimText('')
     }
   }, [])
 
   const { listening, supported: speechSupported, start: startSpeech, stop: stopSpeech } =
-    useSpeechToText({
-      onResult: handleSpeechResult,
-      onError:  setSpeechError,
-      lang:     dictLang,          // ✅ BUG FIX: dynamic language
-    })
+    useSpeechToText({ onResult: handleSpeechResult, onError: setSpeechError, lang: dictLang })
 
   const toggleDictation = () => {
     setSpeechError(null)
-    if (listening) {
-      stopSpeech()
-    } else {
-      if (textareaRef.current) cursorRef.current = textareaRef.current.selectionStart
+    if (listening) stopSpeech()
+    else {
+      cursorRef.current = textareaRef.current?.selectionStart ?? content.length
       startSpeech()
     }
   }
 
-  // ✅ BUG FIX: derive correct extension from blob MIME type
-  const getAudioExtension = (blob) => {
+  // ── Audio extension helper ───────────────────────────────────────────
+  const getExt = (blob) => {
     if (!blob) return 'webm'
-    const type = blob.type || ''
-    if (type.includes('ogg'))  return 'ogg'
-    if (type.includes('mp4'))  return 'mp4'
-    if (type.includes('mpeg')) return 'mp3'
-    if (type.includes('wav'))  return 'wav'
+    const t = (blob.type || '').split(';')[0].trim()
+    if (t.includes('ogg'))  return 'ogg'
+    if (t.includes('mp4'))  return 'mp4'
+    if (t.includes('mpeg')) return 'mp3'
+    if (t.includes('wav'))  return 'wav'
     return 'webm'
   }
 
-  // ── Publish post ─────────────────────────────────────────────────────
+  // ── PUBLISH ──────────────────────────────────────────────────────────
   const handlePublish = async (e) => {
     e.preventDefault()
-    if (!title.trim())              { setError('Please add a title.'); return }
-    if (!content.trim() && !audioBlob) { setError('Please add some text or a voice recording.'); return }
+    if (!title.trim())                 { setError('Please enter a title.'); return }
+    if (!content.trim() && !audioBlob) { setError('Please add text or a voice recording.'); return }
 
     setPublishing(true)
     setError(null)
+    setUploadProgress(null)
 
     try {
       let audioUrl = null
 
-      // 1. Upload audio if present
+      // ── Step 1: Upload audio if present ──────────────────────────
       if (audioBlob) {
-        const ext      = getAudioExtension(audioBlob)   // ✅ BUG FIX
+        setUploadProgress('uploading')
+
+        const ext      = getExt(audioBlob)
         const formData = new FormData()
         formData.append('audio', audioBlob, `recording-${Date.now()}.${ext}`)
 
+        // ✅ Do NOT set Content-Type — browser auto-sets multipart/form-data with boundary
         const uploadRes = await fetch('/api/upload', {
           method: 'POST',
           body:   formData,
-          // ✅ Do NOT set Content-Type header — browser sets it with boundary
         })
 
         if (!uploadRes.ok) {
-          const uploadErr = await uploadRes.json()
-          throw new Error(uploadErr.error || 'Audio upload failed.')
+          let errMsg = 'Audio upload failed.'
+          try {
+            const errData = await uploadRes.json()
+            errMsg = errData.error || errMsg
+          } catch {}
+          setUploadProgress(null)
+          throw new Error(errMsg)
         }
+
         const uploadData = await uploadRes.json()
         audioUrl = uploadData.url
+        setUploadProgress('done')
       }
 
-      // 2. Create post
+      // ── Step 2: Create post ───────────────────────────────────────
       const postRes = await fetch('/api/posts', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -198,55 +190,63 @@ export default function DashboardPage() {
       })
 
       if (!postRes.ok) {
-        const postErr = await postRes.json()
-        throw new Error(postErr.error || 'Failed to publish.')
+        let errMsg = 'Failed to publish post.'
+        try {
+          const errData = await postRes.json()
+          errMsg = errData.error || errMsg
+        } catch {}
+        throw new Error(errMsg)
       }
 
-      // 3. Reset form and refresh list
+      // ── Step 3: Reset + refresh ───────────────────────────────────
       setTitle('')
       setContent('')
       setAudioBlob(null)
       setCategory('poem')
+      setUploadProgress(null)
       setSuccess(true)
-      setTimeout(() => setSuccess(false), 5000)
+      setTimeout(() => setSuccess(false), 6000)
       fetchPosts()
+
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.')
+      setUploadProgress(null)
     } finally {
       setPublishing(false)
     }
   }
 
-  // ── Delete post ──────────────────────────────────────────────────────
-  const handleDelete = async (postId) => {
-    if (!confirm('Delete this post? This cannot be undone.')) return
+  // ── DELETE ───────────────────────────────────────────────────────────
+  const handleDelete = async (postId, postTitle) => {
+    if (!window.confirm(`Remove "${postTitle}" from the website?\n\nThis cannot be undone.`)) return
+
+    setDeletingId(postId)
     try {
       const res = await fetch(`/api/posts?id=${postId}`, { method: 'DELETE' })
       if (res.ok) {
-        fetchPosts()
+        setPosts(prev => prev.filter(p => p.id !== postId))
       } else {
-        setError('Failed to delete post.')
+        const data = await res.json()
+        setError(data.error || 'Failed to delete post.')
       }
     } catch {
-      setError('Network error. Failed to delete post.')
+      setError('Network error. Could not delete post.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
-  // ── Logout ─────────────────────────────────────────────────────────
-  // ✅ BUG FIX: added router.refresh() so Nav state updates immediately
+  // ── LOGOUT ───────────────────────────────────────────────────────────
   const handleLogout = async () => {
-    try {
-      await fetch('/api/auth', { method: 'DELETE' })
-    } finally {
+    try { await fetch('/api/auth', { method: 'DELETE' }) } finally {
       router.push('/')
       router.refresh()
     }
   }
 
-  const formatDate = (iso) =>
-    new Date(iso).toLocaleDateString('en-IN', {
-      year: 'numeric', month: 'short', day: 'numeric',
-    })
+  const formatDate = (iso) => new Date(iso).toLocaleDateString('en-IN', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  })
 
   const categoryOptions = [
     { value: 'poem',       label: '🌸 Poem'       },
@@ -255,15 +255,13 @@ export default function DashboardPage() {
     { value: 'note',       label: '✍️  Note'        },
   ]
 
-  const langOptions = [
-    { value: 'hi-IN', label: 'हिन्दी', sublabel: 'Hindi'   },
-    { value: 'en-IN', label: 'English', sublabel: 'English' },
-  ]
+  const isPublishDisabled =
+    publishing || !title.trim() || (!content.trim() && !audioBlob)
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--parchment-light)' }}>
 
-      {/* ── Studio Header ─────────────────────────────────────── */}
+      {/* ── Header ───────────────────────────────────────────── */}
       <header
         className="sticky top-0 z-40"
         style={{ background: 'rgba(45,8,16,0.97)', borderBottom: '1px solid rgba(200,155,58,0.2)' }}
@@ -283,14 +281,14 @@ export default function DashboardPage() {
               href="/"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-display text-sm tracking-wide hidden md:block"
+              className="font-display text-sm hidden md:block"
               style={{ color: 'rgba(200,155,58,0.55)' }}
             >
               View Site ↗
             </Link>
             <button
               onClick={handleLogout}
-              className="font-display text-sm tracking-wide px-4 py-2 rounded-sm transition-all"
+              className="font-display text-sm px-4 py-2 rounded-sm"
               style={{ color: 'rgba(200,155,58,0.7)', border: '1px solid rgba(200,155,58,0.2)' }}
             >
               Sign Out
@@ -302,10 +300,10 @@ export default function DashboardPage() {
       <main className="max-w-6xl mx-auto px-6 py-10">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
 
-          {/* ══ LEFT COLUMN — Publishing Studio ══════════════════ */}
+          {/* ══ LEFT — Publishing Studio ════════════════════════ */}
           <div className="lg:col-span-3">
 
-            {/* Success banner */}
+            {/* Success */}
             {success && (
               <div
                 className="mb-6 px-5 py-4 rounded-sm font-display text-base animate-fade-slide-up flex items-center gap-3"
@@ -316,6 +314,7 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Error */}
             {error && (
               <div
                 className="mb-6 px-5 py-4 rounded-sm font-display text-base flex items-start gap-3"
@@ -323,7 +322,10 @@ export default function DashboardPage() {
               >
                 <span>⚠️</span>
                 <span className="flex-1">{error}</span>
-                <button onClick={() => setError(null)} className="opacity-60 hover:opacity-100 flex-shrink-0">✕</button>
+                <button
+                  onClick={() => setError(null)}
+                  className="opacity-60 hover:opacity-100 flex-shrink-0"
+                >✕</button>
               </div>
             )}
 
@@ -346,7 +348,7 @@ export default function DashboardPage() {
                   <input
                     type="text"
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
+                    onChange={e => setTitle(e.target.value)}
                     className="literary-input"
                     placeholder="Name your poem or post…"
                     maxLength={200}
@@ -358,7 +360,7 @@ export default function DashboardPage() {
                 <div>
                   <label className="section-label block mb-2">Category</label>
                   <div className="flex flex-wrap gap-2">
-                    {categoryOptions.map((opt) => (
+                    {categoryOptions.map(opt => (
                       <button
                         key={opt.value}
                         type="button"
@@ -379,18 +381,23 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* ── LAYER 1: Text + Dictation ───────────────────── */}
+                {/* ── LAYER 1: Text + Dictation ───────────────── */}
                 <div>
                   <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                     <label className="section-label">
-                      Text Content {!audioBlob && <span style={{ color: 'var(--burgundy-mid)' }}>*</span>}
+                      Text {!audioBlob && <span style={{ color: 'var(--burgundy-mid)' }}>*</span>}
                     </label>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* ✅ BUG FIX: Language toggle */}
+                    <div className="flex items-center gap-2">
+                      {/* Language toggle */}
                       {speechSupported && (
-                        <div className="flex rounded-sm overflow-hidden" style={{ border: '1px solid rgba(200,155,58,0.2)' }}>
-                          {langOptions.map((l) => (
+                        <div
+                          className="flex rounded-sm overflow-hidden"
+                          style={{ border: '1px solid rgba(200,155,58,0.2)' }}
+                        >
+                          {[
+                            { value: 'hi-IN', label: 'हिन्दी' },
+                            { value: 'en-IN', label: 'English' },
+                          ].map(l => (
                             <button
                               key={l.value}
                               type="button"
@@ -398,10 +405,9 @@ export default function DashboardPage() {
                               onClick={() => setDictLang(l.value)}
                               className="px-3 py-1 font-display text-xs transition-all"
                               style={{
-                                background: dictLang === l.value ? 'rgba(200,155,58,0.2)' : 'transparent',
+                                background: dictLang === l.value ? 'rgba(200,155,58,0.18)' : 'transparent',
                                 color: dictLang === l.value ? 'var(--gold-primary)' : 'var(--ink-soft)',
                               }}
-                              title={`Dictate in ${l.sublabel}`}
                             >
                               {l.label}
                             </button>
@@ -414,83 +420,118 @@ export default function DashboardPage() {
                         type="button"
                         onClick={toggleDictation}
                         disabled={!speechSupported || publishing}
-                        title={!speechSupported ? 'Use Chrome or Edge for dictation' : (listening ? 'Stop dictating' : 'Start dictating')}
                         className="flex items-center gap-2 px-3 py-1.5 rounded-sm font-display text-xs tracking-widest uppercase transition-all"
                         style={{
                           background: listening ? 'rgba(180,34,72,0.12)' : 'rgba(200,155,58,0.07)',
                           color:      listening ? '#b82248' : 'var(--gold-primary)',
                           border:     `1px solid ${listening ? 'rgba(180,34,72,0.25)' : 'rgba(200,155,58,0.18)'}`,
-                          opacity:    (!speechSupported || publishing) ? 0.4 : 1,
-                          cursor:     (!speechSupported || publishing) ? 'not-allowed' : 'pointer',
+                          opacity:    !speechSupported || publishing ? 0.4 : 1,
+                          cursor:     !speechSupported || publishing ? 'not-allowed' : 'pointer',
                         }}
                       >
                         {listening ? (
                           <>
-                            <span className="w-2 h-2 rounded-full recording-pulse flex-shrink-0" style={{ background: '#b82248' }} />
+                            <span
+                              className="w-2 h-2 rounded-full recording-pulse"
+                              style={{ background: '#b82248' }}
+                            />
                             Stop
                           </>
-                        ) : (
-                          <>🎤 Dictate</>
-                        )}
+                        ) : '🎤 Dictate'}
                       </button>
                     </div>
                   </div>
 
-                  {/* Browser support notice */}
                   {!speechSupported && (
-                    <div className="mb-2 px-3 py-2 rounded-sm text-xs font-body"
-                      style={{ background: 'rgba(200,155,58,0.06)', color: 'var(--ink-soft)', border: '1px solid rgba(200,155,58,0.1)' }}>
-                      💡 Dictation works in <strong>Chrome or Edge</strong> only — not Safari or Firefox.
+                    <div
+                      className="mb-2 px-3 py-2 rounded-sm text-xs font-body"
+                      style={{ background: 'rgba(200,155,58,0.06)', color: 'var(--ink-soft)' }}
+                    >
+                      💡 Dictation works in <strong>Chrome or Edge</strong> only.
                     </div>
                   )}
-
-                  {/* Speech error */}
                   {speechError && (
-                    <div className="mb-2 px-3 py-2 rounded-sm text-xs font-body"
-                      style={{ background: 'rgba(180,34,72,0.06)', color: '#b82248' }}>
+                    <div
+                      className="mb-2 px-3 py-2 rounded-sm text-xs font-body"
+                      style={{ background: 'rgba(180,34,72,0.06)', color: '#b82248' }}
+                    >
                       {speechError}
                     </div>
                   )}
-
-                  {/* Listening indicator */}
                   {listening && (
-                    <div className="mb-2 px-3 py-2 rounded-sm text-xs font-body"
-                      style={{ background: 'rgba(180,34,72,0.04)', color: 'var(--ink-mid)', border: '1px solid rgba(180,34,72,0.1)' }}>
+                    <div
+                      className="mb-2 px-3 py-2 rounded-sm text-xs font-body"
+                      style={{ background: 'rgba(180,34,72,0.04)', color: 'var(--ink-mid)' }}
+                    >
                       🎤 Listening in <strong>{dictLang === 'hi-IN' ? 'Hindi' : 'English'}</strong>…
-                      {interimText && (
-                        <span className="italic ml-1" style={{ color: 'var(--ink-soft)' }}>{interimText}</span>
-                      )}
+                      {interimText && <em className="ml-1 opacity-60">{interimText}</em>}
                     </div>
                   )}
 
                   <textarea
                     ref={textareaRef}
                     value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    onClick={(e) => { cursorRef.current = e.target.selectionStart }}
-                    onKeyUp={(e)  => { cursorRef.current = e.target.selectionStart }}
+                    onChange={e => setContent(e.target.value)}
+                    onClick={e => { cursorRef.current = e.target.selectionStart }}
+                    onKeyUp={e  => { cursorRef.current = e.target.selectionStart }}
                     className="literary-textarea"
-                    placeholder={audioBlob
-                      ? 'Optional — add text to accompany your recording…'
-                      : 'Write your poem or reflection here… or use Dictate to speak it.'}
+                    placeholder={
+                      audioBlob
+                        ? 'Optional — add text to go with your recording…'
+                        : 'Write your poem or reflection here… or use Dictate to speak it in Hindi or English.'
+                    }
                     style={{ minHeight: '220px' }}
                     disabled={publishing}
                   />
-                  <p className="text-right text-xs mt-1 font-display" style={{ color: 'var(--ink-soft)', opacity: 0.55 }}>
+                  <p
+                    className="text-right text-xs mt-1 font-display"
+                    style={{ color: 'var(--ink-soft)', opacity: 0.5 }}
+                  >
                     {content.length} characters
                   </p>
                 </div>
 
-                {/* ── LAYER 2: Audio Recording ─────────────────────── */}
+                {/* ── LAYER 2: Audio Recording ────────────────── */}
                 <div>
                   <label className="section-label block mb-1">
-                    Voice Recording <span className="normal-case font-body text-xs tracking-normal" style={{ color: 'var(--ink-soft)' }}>— optional</span>
+                    Voice Recording
+                    <span
+                      className="normal-case font-body text-xs tracking-normal ml-2"
+                      style={{ color: 'var(--ink-soft)' }}
+                    >
+                      — optional, appears as a playable audio player in the post
+                    </span>
                   </label>
-                  <p className="font-body text-sm mb-3" style={{ color: 'var(--ink-soft)' }}>
-                    Record yourself reading the poem. It will appear as an audio player in the post.
-                  </p>
+
+                  {/* Upload progress */}
+                  {uploadProgress === 'uploading' && (
+                    <div
+                      className="mb-3 flex items-center gap-3 px-4 py-2 rounded-sm"
+                      style={{ background: 'rgba(200,155,58,0.08)', border: '1px solid rgba(200,155,58,0.2)' }}
+                    >
+                      <span
+                        className="w-4 h-4 border-2 rounded-full animate-spin flex-shrink-0"
+                        style={{ borderColor: 'rgba(200,155,58,0.3)', borderTopColor: 'var(--gold-primary)' }}
+                      />
+                      <span className="font-display text-sm" style={{ color: 'var(--gold-primary)' }}>
+                        Uploading your voice recording…
+                      </span>
+                    </div>
+                  )}
+                  {uploadProgress === 'done' && (
+                    <div
+                      className="mb-3 flex items-center gap-2 px-4 py-2 rounded-sm"
+                      style={{ background: 'rgba(30,100,60,0.08)', border: '1px solid rgba(30,100,60,0.2)' }}
+                    >
+                      <span>✓</span>
+                      <span className="font-display text-sm" style={{ color: '#1a6040' }}>
+                        Recording uploaded — creating post…
+                      </span>
+                    </div>
+                  )}
+
                   <AudioRecorder
-                    onRecorded={(blob) => setAudioBlob(blob)}
+                    onRecorded={blob => setAudioBlob(blob)}
                     disabled={publishing}
                   />
                 </div>
@@ -498,21 +539,24 @@ export default function DashboardPage() {
                 {/* Publish button */}
                 <button
                   type="submit"
-                  disabled={publishing || !title.trim() || (!content.trim() && !audioBlob)}
+                  disabled={isPublishDisabled}
                   className="btn-gold w-full justify-center text-lg py-4 mt-2"
                 >
                   {publishing ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="w-4 h-4 border-2 rounded-full animate-spin"
-                        style={{ borderColor: 'rgba(45,8,16,0.25)', borderTopColor: 'var(--burgundy-deep)' }} />
-                      Publishing…
+                      <span
+                        className="w-4 h-4 border-2 rounded-full animate-spin"
+                        style={{ borderColor: 'rgba(45,8,16,0.25)', borderTopColor: 'var(--burgundy-deep)' }}
+                      />
+                      {uploadProgress === 'uploading' ? 'Uploading recording…' : 'Publishing…'}
                     </span>
-                  ) : (
-                    'Publish Post ✦'
-                  )}
+                  ) : 'Publish Post ✦'}
                 </button>
 
-                <p className="text-center text-xs font-body" style={{ color: 'var(--ink-soft)', opacity: 0.6 }}>
+                <p
+                  className="text-center text-xs font-body"
+                  style={{ color: 'var(--ink-soft)', opacity: 0.6 }}
+                >
                   Your post appears on the homepage immediately after publishing.
                 </p>
 
@@ -520,75 +564,120 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* ══ RIGHT COLUMN — Manage Posts ══════════════════════ */}
+          {/* ══ RIGHT — Manage Posts ════════════════════════════ */}
           <div className="lg:col-span-2">
             <div className="literary-card p-6 sticky top-24">
-
               <div className="mb-5">
                 <p className="section-label mb-1">All Posts</p>
-                <h3 className="font-display text-2xl font-semibold" style={{ color: 'var(--burgundy-deep)' }}>
-                  Manage Posts
+                <h3
+                  className="font-display text-2xl font-semibold"
+                  style={{ color: 'var(--burgundy-deep)' }}
+                >
+                  Manage & Take Down
                 </h3>
               </div>
 
               {loadingPosts ? (
-                <div className="py-10 text-center font-display italic" style={{ color: 'var(--ink-soft)' }}>
+                <div
+                  className="py-10 text-center font-display italic"
+                  style={{ color: 'var(--ink-soft)' }}
+                >
                   Loading…
                 </div>
               ) : posts.length === 0 ? (
                 <div className="py-10 text-center">
                   <div className="text-3xl mb-3 opacity-20">📜</div>
-                  <p className="font-display text-lg italic" style={{ color: 'var(--ink-soft)' }}>No posts yet.</p>
-                  <p className="font-body text-sm mt-1" style={{ color: 'var(--ink-soft)', opacity: 0.7 }}>
-                    Create your first post on the left.
+                  <p className="font-display text-lg italic" style={{ color: 'var(--ink-soft)' }}>
+                    No posts yet.
                   </p>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2.5 max-h-[60vh] overflow-y-auto pr-1">
-                  {posts.map((post) => (
+                <div className="flex flex-col gap-3 max-h-[62vh] overflow-y-auto pr-1">
+                  {posts.map(post => (
                     <div
                       key={post.id}
-                      className="flex items-start justify-between gap-3 p-4 rounded-sm transition-colors"
-                      style={{ background: 'rgba(200,155,58,0.05)', border: '1px solid rgba(200,155,58,0.12)' }}
+                      className="rounded-sm p-4 transition-all"
+                      style={{
+                        background: 'rgba(200,155,58,0.05)',
+                        border: '1px solid rgba(200,155,58,0.12)',
+                        opacity: deletingId === post.id ? 0.5 : 1,
+                      }}
                     >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-display text-base font-semibold leading-tight truncate"
-                          style={{ color: 'var(--burgundy-deep)' }}>
+                      {/* Post info */}
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p
+                          className="font-display text-base font-semibold leading-tight flex-1 min-w-0 truncate"
+                          style={{ color: 'var(--burgundy-deep)' }}
+                        >
                           {post.title}
                         </p>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          <span className="text-[10px] font-display tracking-widest uppercase px-2 py-0.5 rounded-sm"
-                            style={{ background: 'rgba(143,26,55,0.08)', color: 'var(--burgundy-mid)' }}>
-                            {post.category}
+                        {post.audio_url && (
+                          <span
+                            className="text-xs flex-shrink-0"
+                            title="Has audio"
+                            style={{ color: 'var(--gold-primary)' }}
+                          >
+                            🎙
                           </span>
-                          {post.audio_url && (
-                            <span className="text-[10px]" title="Has audio" style={{ color: 'var(--gold-primary)' }}>🎙</span>
-                          )}
-                          <span className="text-[10px] font-body" style={{ color: 'var(--ink-soft)' }}>
-                            {formatDate(post.created_at)}
-                          </span>
-                        </div>
+                        )}
                       </div>
+
+                      {/* Date + category */}
+                      <div className="flex items-center gap-2 flex-wrap mb-3">
+                        <span
+                          className="text-[10px] font-display tracking-widest uppercase px-2 py-0.5 rounded-sm"
+                          style={{ background: 'rgba(143,26,55,0.08)', color: 'var(--burgundy-mid)' }}
+                        >
+                          {post.category}
+                        </span>
+                        <span className="text-[11px] font-display" style={{ color: 'var(--ink-soft)' }}>
+                          {formatDate(post.created_at)}
+                        </span>
+                      </div>
+
+                      {/* Take Down button */}
                       <button
-                        onClick={() => handleDelete(post.id)}
-                        title="Delete this post"
-                        className="flex-shrink-0 text-sm pt-0.5 transition-opacity hover:opacity-100"
-                        style={{ color: 'rgba(180,34,72,0.35)', opacity: 0.7 }}
+                        onClick={() => handleDelete(post.id, post.title)}
+                        disabled={!!deletingId}
+                        className="w-full flex items-center justify-center gap-2 py-2 rounded-sm font-display text-xs tracking-wide transition-all"
+                        style={{
+                          background: 'rgba(180,34,72,0.07)',
+                          color: deletingId === post.id ? '#b82248' : 'rgba(180,34,72,0.6)',
+                          border: '1px solid rgba(180,34,72,0.15)',
+                          cursor: deletingId ? 'not-allowed' : 'pointer',
+                        }}
                       >
-                        ✕
+                        {deletingId === post.id ? (
+                          <>
+                            <span
+                              className="w-3 h-3 border border-t-transparent rounded-full animate-spin"
+                              style={{ borderColor: '#b82248', borderTopColor: 'transparent' }}
+                            />
+                            Removing…
+                          </>
+                        ) : '✕ Take Down Post'}
                       </button>
                     </div>
                   ))}
                 </div>
               )}
 
-              <div className="mt-5 pt-4 flex items-center justify-between"
-                style={{ borderTop: '1px solid rgba(200,155,58,0.1)' }}>
-                <span className="font-display text-xs" style={{ color: 'var(--ink-soft)', opacity: 0.6 }}>
+              <div
+                className="mt-5 pt-4 flex items-center justify-between"
+                style={{ borderTop: '1px solid rgba(200,155,58,0.1)' }}
+              >
+                <span
+                  className="font-display text-xs"
+                  style={{ color: 'var(--ink-soft)', opacity: 0.6 }}
+                >
                   {posts.length} post{posts.length !== 1 ? 's' : ''} published
                 </span>
-                <Link href="/" target="_blank" className="font-display text-sm"
-                  style={{ color: 'var(--gold-primary)' }}>
+                <Link
+                  href="/"
+                  target="_blank"
+                  className="font-display text-sm"
+                  style={{ color: 'var(--gold-primary)' }}
+                >
                   View site ↗
                 </Link>
               </div>
